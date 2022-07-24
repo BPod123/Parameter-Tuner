@@ -1,9 +1,7 @@
-from multiprocessing import Pool, cpu_count, Lock
+from multiprocessing import Pool, cpu_count
 from bayes_opt.bayesian_optimization import BayesianOptimization # https://github.com/fmfn/BayesianOptimization
-import pandas as pd
 import os
 from threading import Thread
-from random import randint
 from Multioptimizer.DBHandler import DBHandler, DBInstance
 
 
@@ -41,23 +39,16 @@ class MultiOptimizer(object):
         self.run(True)
 
     def run(self, findMin: bool):
-        self.generateSummary()
         self.processRun(findMin)
-        # if self.numThreads > 1:
-        #     threads = [Thread(target=self.processRun) for i in range(self.numThreads)]
-        #     [t.start() for t in threads]
-        #     [t.join() for t in threads]
-        # else:
-        #     self.threadRun()
-        self.generateSummary()
+        self.generateSummary(findMin)
 
-    def generateSummary(self, limit=1000):
+    def generateSummary(self, findMin, limit=1000):
         """
         limit: The limit on the number of rows of the generated summary csv file
         """
 
         self.dbHandler.mergeInstances()
-        self.dbHandler.generateSummary(self.targetName, self.findMin, limit, append=False)
+        self.dbHandler.generateSummary(self.targetName, findMin, limit, append=False)
 
     def processRun(self, findMin: bool):
         if self.numCpus > 1:
@@ -76,14 +67,15 @@ class MultiOptimizer(object):
         dbInstance.readyToMerge = True
 
     def threadRun(self, findMin: bool, dbInstance: DBInstance):
-        tester = Tester(self.targetName, self.func, self.presetVals, findMin, dbInstance, self.extra)
+        tester = Tester(self.targetName, self.func, self.colTypes, self.presetVals, findMin, dbInstance, self.extra)
         opt = BayesianOptimization(tester.runTest, self.p_bounds)  # random_state=randint(1, int(2 ** 32 - 2)))
         opt.maximize(self.initPoints, self.numIter)
         dbInstance.readyToMerge = True
 
 
 class Tester(object):
-    def __init__(self, targetName, func, presetVals, findMin, dbInstance: DBInstance, extra):
+    def __init__(self, targetName, func, colTypes, presetVals, findMin, dbInstance: DBInstance, extra):
+        self.colTypes = colTypes
         self.extra = extra
         self.targetName = targetName
         self.func = func
@@ -96,6 +88,10 @@ class Tester(object):
         for key in self.presetVals:
             newDict[key] = self.presetVals[key]
         newDict['extra'] = self.extra
+        # Cast types like ints and stuff then update the parameter tuning repo
+        castDict = {"TEXT": str, "REAL": float, "INTEGER": int}
+        for key, castType in self.colTypes:
+            newDict[key] = castDict[castType.replace(" ", "").upper()](newDict[key])
         result = self.func(newDict)
 
         optResult = None
