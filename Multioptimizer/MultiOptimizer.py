@@ -87,26 +87,41 @@ class Tester(object):
         newDict = {val: kwargs[val] for val in kwargs}
         for key in self.presetVals:
             newDict[key] = self.presetVals[key]
-        newDict['extra'] = self.extra
+
         # Cast types like ints and stuff then update the parameter tuning repo
-        castDict = {"TEXT": str, "REAL": float, "INTEGER": int}
+        castDict = {"TEXT": str, "REAL": float, "INTEGER": round}
         for key, castType in self.colTypes:
-            newDict[key] = castDict[castType.replace(" ", "").upper()](newDict[key])
+            if key in newDict:
+                newDict[key] = castDict[castType.replace(" ", "").upper()](newDict[key])
+
+        dfDict = newDict.copy()
+        if self.extra:
+            newDict['extra'] = self.extra
         result = self.func(newDict)
 
         optResult = None
-        for res in result:
-            optResult = res[self.targetName]
-            if self.findMin:
-                if res == 0:
-                    optResult = float('inf')
-                else:
-                    optResult = 1 / optResult
+        res = result[self.targetName]
+        if self.findMin:
+            if res == 0:
+                optResult = float('inf')
             else:
-                optResult = result
-            dfDict = newDict.copy()
-            for key in res:
-                dfDict[key] = res[key]
-            self.dbInstance.addRowToDB(dfDict)
+                optResult = 1 / optResult
+        else:
+            optResult = res
+
+
+        # for res in result:
+        #     optResult = res[self.targetName]
+        #     if self.findMin:
+        #         if res == 0:
+        #             optResult = float('inf')
+        #         else:
+        #             optResult = 1 / optResult
+        #     else:
+        #         optResult = result
+
+        for key in result:
+            dfDict[key] = result[key]
+        self.dbInstance.addRowToDB(dfDict)
 
         return optResult
